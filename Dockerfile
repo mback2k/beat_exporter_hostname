@@ -1,7 +1,14 @@
+FROM golang:stretch as build
+
+ADD . /go/beat-exporter
+WORKDIR /go/beat-exporter
+
+RUN go get
+RUN go build -ldflags="-s -w"
+RUN chmod +x beat-exporter
+
 FROM quay.io/prometheus/busybox:latest
-LABEL MAINTAINER="Audrius Karabanovas <auk@trustpilot.com>"
 
-COPY .build/linux-amd64/beat-exporter /bin/beat-exporter
+COPY --from=build /go/beat-exporter/beat-exporter /bin/beat-exporter
 
-EXPOSE      9479
-ENTRYPOINT  [ "/bin/beat-exporter" ]
+ENTRYPOINT [ "/bin/beat-exporter" ]
