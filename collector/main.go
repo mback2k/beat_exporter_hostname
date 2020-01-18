@@ -22,13 +22,14 @@ type mainCollector struct {
 	targetDesc *prometheus.Desc
 	targetUp   *prometheus.Desc
 	metrics    exportedMetrics
+	systemBeat bool
 }
 
 // HackfixRegex regex to replace JSON part
 var HackfixRegex = regexp.MustCompile("\"time\":(\\d+)") // replaces time:123 to time.ms:123, only filebeat has different naming of time metric
 
 // NewMainCollector constructor
-func NewMainCollector(client *http.Client, url *url.URL, name string, beatInfo *BeatInfo) prometheus.Collector {
+func NewMainCollector(client *http.Client, url *url.URL, name string, beatInfo *BeatInfo, systemBeat bool) prometheus.Collector {
 	instance := fmt.Sprintf("%s:%s", url.Hostname(), url.Port())
 	beat := &mainCollector{
 		Collectors: make(map[string]prometheus.Collector),
@@ -47,8 +48,9 @@ func NewMainCollector(client *http.Client, url *url.URL, name string, beatInfo *
 			nil,
 			nil),
 
-		beatInfo: beatInfo,
-		metrics:  exportedMetrics{},
+		beatInfo:   beatInfo,
+		metrics:    exportedMetrics{},
+		systemBeat: systemBeat,
 	}
 
 	beat.Collectors["system"] = NewSystemCollector(beatInfo, beat.Stats)
@@ -57,6 +59,7 @@ func NewMainCollector(client *http.Client, url *url.URL, name string, beatInfo *
 	beat.Collectors["registrar"] = NewRegistrarCollector(beatInfo, beat.Stats)
 	beat.Collectors["filebeat"] = NewFilebeatCollector(beatInfo, beat.Stats)
 	beat.Collectors["metricbeat"] = NewMetricbeatCollector(beatInfo, beat.Stats)
+	beat.Collectors["auditd"] = NewAuditdCollector(beatInfo, beat.Stats)
 
 	return beat
 }
@@ -71,9 +74,12 @@ func (b *mainCollector) Describe(ch chan<- *prometheus.Desc) {
 	}
 
 	// standard collectors for all types of beats
-	b.Collectors["system"].Describe(ch)
+	if b.systemBeat {
+		b.Collectors["system"].Describe(ch)
+	}
 	b.Collectors["beat"].Describe(ch)
 	b.Collectors["libbeat"].Describe(ch)
+	b.Collectors["auditd"].Describe(ch)
 
 	// Customized collectors per beat type
 	switch b.beatInfo.Beat {
@@ -104,9 +110,12 @@ func (b *mainCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// standard collectors for all types of beats
-	b.Collectors["system"].Collect(ch)
+	if b.systemBeat {
+		b.Collectors["system"].Collect(ch)
+	}
 	b.Collectors["beat"].Collect(ch)
 	b.Collectors["libbeat"].Collect(ch)
+	b.Collectors["auditd"].Collect(ch)
 
 	// Customized collectors per beat type
 	switch b.beatInfo.Beat {
